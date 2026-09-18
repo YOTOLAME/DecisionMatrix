@@ -12,6 +12,18 @@
     --ink:#1a1a1a; --muted:#6b6b6b; --line:#dcdcdc;
     --card:#ffffff; --bg:#f2f3f5; --accent:#0b57d0;
   }
+  html[data-theme="night"]{
+    --green:#3fae5b; --green-bg:#0f2115;
+    --yellow:#d3a521; --yellow-bg:#241c07;
+    --red:#e05a53; --red-bg:#2a0e0c;
+    --ink:#d8d8d8; --muted:#8a8a8a; --line:#2a2a2a;
+    --card:#141414; --bg:#000000; --accent:#5a8fe0;
+  }
+  html[data-theme="night"] input[type=text],
+  html[data-theme="night"] textarea,
+  html[data-theme="night"] .asset-btn,
+  html[data-theme="night"] .opt-btn{ background:#0d0d0d; }
+  html[data-theme="night"] #sticky{ background:#0a0a0a; }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
@@ -73,6 +85,15 @@
   .log-actions{display:flex;gap:6px;margin-top:6px;}
   .log-actions button{flex:1;padding:6px;font-size:11px;}
   .small{font-size:11px;color:var(--muted);}
+  .theme-toggle{background:#eef0f3;border:none;border-radius:10px;padding:8px 10px;font-size:16px;min-height:36px;}
+  .progress-wrap{background:var(--line);border-radius:8px;height:6px;overflow:hidden;margin-bottom:6px;}
+  .progress-bar{height:100%;background:var(--accent);transition:width .2s;}
+  .btn-primary:disabled{opacity:.4;}
+  .badge-count{background:var(--accent);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px;}
+  #toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);background:#1a1a1a;color:#fff;
+    padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;
+    transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center;}
+  #toast.show{opacity:1;}
 </style>
 </head>
 <body>
@@ -96,7 +117,10 @@
         <h1 style="margin-bottom:0">Decision Matrix</h1>
         <div class="small">Vessel: <b id="vesselLabel"></b> <button class="link" onclick="editVessel()">edit</button></div>
       </div>
-      <button class="link" onclick="showLog()">Log ▸</button>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button class="theme-toggle" id="themeToggleBtn" onclick="toggleTheme()">🌙</button>
+        <button class="link" onclick="showLog()">Log<span class="badge-count" id="logCountBadge">0</span> ▸</button>
+      </div>
     </div>
 
     <div class="card">
@@ -116,9 +140,10 @@
     <div class="card" id="criteriaCard"></div>
 
     <div class="card" id="lifesavingCard">
-      <label style="margin-bottom:2px">Marine Lifesaving Check — Passenger Transfer (Boat-Landing / FROG)</label>
-      <div class="small" style="margin-bottom:10px">Ref. TEPA Marine Safety Card. Points already covered by the Decision Matrix above (weather, briefing, PPE, boat-landing condition, communication) are not repeated here — record only the overall result.</div>
-      <div class="grid2" id="lifesavingGrid"></div>
+            <label style="margin-bottom:2px">Marine Lifesaving Check — Passenger Transfer (Boat-Landing / FROG)</label>
+      <div class="small" style="margin-bottom:10px">Ref. TEPA Marine Safety Card. Points already covered by the Decision Matrix above (weather, boat-landing condition, safety briefing) are not repeated. Only points not covered elsewhere are checked here.</div>
+      <div id="lifesavingItems"></div>
+      <div class="small" id="lifesavingResultLine" style="margin-top:6px;font-weight:700"></div>
     </div>
 
     <div class="card">
@@ -150,16 +175,17 @@
 <!-- STICKY BOTTOM -->
 <div id="sticky" class="hidden">
   <div id="stickyInner">
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+    <div class="small" id="progressText" style="margin-bottom:6px"></div>
     <div class="score-banner" id="scoreBanner">
       <span id="scoreText">Score: 0</span>
       <span id="decisionText">GO</span>
     </div>
-    <div class="actions-row">
-      <button class="btn btn-ghost" onclick="resetForm()">New</button>
-      <button class="btn btn-primary" onclick="saveEntry()">Save</button>
-    </div>
+    <button class="btn btn-primary btn-block" id="saveBtn" onclick="saveEntry()" disabled>Next Transfer</button>
   </div>
 </div>
+
+<div id="toast"></div>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -226,13 +252,15 @@ var CRITERIA = [
     ]}
 ];
 
-var LIFESAVING_OPTIONS = [
-  {label:"Confirmed — all points OK", value:"OK", color:"green"},
-  {label:"Not confirmed — reassess", value:"REASSESS", color:"red"}
+var LIFESAVING_ITEMS = [
+  { id:"l1", text:"Risks assessed and Safety Green Light given (RSES authorisation received for night transfer)" },
+  { id:"l5", text:"Communication established with all parties, transfer method agreed, boat-landing assistant assigned" },
+  { id:"l6", text:"All loose personal items properly secured / stored (CCU / luggage carrier)" },
+  { id:"l7", text:"Correct PPE worn (lifejacket, safety shoes, gloves) and in good condition" }
 ];
 
 /* ---------- STATE ---------- */
-var state = { asset:null, selections:{}, weather:null, autoFlags:{}, lifesaving:null };
+var state = { asset:null, selections:{}, weather:null, autoFlags:{}, lifesaving:{} };
 
 /* ---------- STORAGE HELPERS (fail-safe: some iOS contexts — Mail/AirDrop/Files
    previews, private mode — block localStorage and throw on access. If that
@@ -259,8 +287,20 @@ function setLogs(l){ lsSet("dm_logs", JSON.stringify(l)); }
 /* ---------- SETUP ---------- */
 function init(){
   document.getElementById("posLabel").textContent = BASE_POSITION.label;
+  applyTheme(lsGet("dm_theme") || "day");
   var v = getVessel();
   if(v){ startMain(); } else { document.getElementById("setupScreen").classList.remove("hidden"); }
+}
+function applyTheme(mode){
+  document.documentElement.setAttribute("data-theme", mode);
+  var btn = document.getElementById("themeToggleBtn");
+  if(btn) btn.textContent = mode === "night" ? "☀️" : "🌙";
+}
+function toggleTheme(){
+  var current = document.documentElement.getAttribute("data-theme") === "night" ? "night" : "day";
+  var next = current === "night" ? "day" : "night";
+  applyTheme(next);
+  lsSet("dm_theme", next);
 }
 function saveVessel(){
   var v = document.getElementById("vesselInput").value.trim();
@@ -286,6 +326,8 @@ function startMain(){
   renderCriteria();
   renderLifesaving();
   updateScore();
+  updateProgress();
+  updateLogBadge();
   if(navigator.onLine){ try{ fetchWeather(); }catch(e){ /* non-blocking */ } }
 }
 
@@ -297,7 +339,7 @@ function renderAssets(){
     var b = document.createElement("button");
     b.className = "asset-btn" + (state.asset===a ? " selected":"");
     b.textContent = a;
-    b.onclick = function(){ state.asset = a; renderAssets(); };
+    b.onclick = function(){ state.asset = a; renderAssets(); updateProgress(); };
     grid.appendChild(b);
   });
 }
@@ -329,6 +371,7 @@ function renderCriteria(){
         state.autoFlags[crit.id] = false;
         renderCriteria();
         updateScore();
+        updateProgress();
       };
       grid.appendChild(b);
     });
@@ -339,19 +382,69 @@ function renderCriteria(){
 
 /* ---------- LIFESAVING CHECK ---------- */
 function renderLifesaving(){
-  var grid = document.getElementById("lifesavingGrid");
-  grid.innerHTML = "";
-  LIFESAVING_OPTIONS.forEach(function(opt){
-    var b = document.createElement("button");
-    var isSelected = state.lifesaving === opt.value;
-    b.className = "opt-btn " + opt.color + (isSelected ? " selected":"");
-    b.textContent = opt.label;
-    b.onclick = function(){
-      state.lifesaving = opt.value;
-      renderLifesaving();
-    };
-    grid.appendChild(b);
+  var box = document.getElementById("lifesavingItems");
+  box.innerHTML = "";
+  LIFESAVING_ITEMS.forEach(function(item){
+    var wrap = document.createElement("div");
+    wrap.className = "crit";
+    var title = document.createElement("div");
+    title.className = "crit-title";
+    title.textContent = item.text;
+    wrap.appendChild(title);
+
+    var grid = document.createElement("div");
+    grid.className = "grid2";
+    [{v:"YES",label:"Yes",color:"green"},{v:"NO",label:"No",color:"red"}].forEach(function(opt){
+      var b = document.createElement("button");
+      var isSelected = state.lifesaving[item.id] === opt.v;
+      b.className = "opt-btn " + opt.color + (isSelected ? " selected":"");
+      b.textContent = opt.label;
+      b.onclick = function(){
+        state.lifesaving[item.id] = opt.v;
+        renderLifesaving();
+        updateProgress();
+      };
+      grid.appendChild(b);
+    });
+    wrap.appendChild(grid);
+    box.appendChild(wrap);
   });
+  var line = document.getElementById("lifesavingResultLine");
+  var result = computeLifesavingResult();
+  if(result === null){
+    line.style.color = "var(--muted)";
+    line.textContent = "Answer all 4 points to get the result.";
+  } else if(result === "OK"){
+    line.style.color = "var(--green)";
+    line.textContent = "Result: OK — all points confirmed.";
+  } else {
+    line.style.color = "var(--red)";
+    line.textContent = "Result: RE-ASSESS — at least one point not confirmed.";
+  }
+}
+function computeLifesavingResult(){
+  var answered = LIFESAVING_ITEMS.every(function(i){ return state.lifesaving[i.id]; });
+  if(!answered) return null;
+  var anyNo = LIFESAVING_ITEMS.some(function(i){ return state.lifesaving[i.id] === "NO"; });
+  return anyNo ? "REASSESS" : "OK";
+}
+
+/* ---------- PROGRESS ---------- */
+function updateProgress(){
+  var total = 1 + CRITERIA.length + LIFESAVING_ITEMS.length;
+  var done = (state.asset ? 1 : 0)
+    + CRITERIA.filter(function(c){ return !!state.selections[c.id]; }).length
+    + LIFESAVING_ITEMS.filter(function(i){ return !!state.lifesaving[i.id]; }).length;
+  var pct = Math.round((done/total)*100);
+  var bar = document.getElementById("progressBar");
+  var text = document.getElementById("progressText");
+  if(bar) bar.style.width = pct + "%";
+  var saveBtn = document.getElementById("saveBtn");
+  if(text){
+    text.textContent = done < total ? (done+"/"+total+" completed — fill in all items to continue") : "All items completed — tap Next Transfer";
+    text.style.color = done < total ? "var(--muted)" : "var(--green)";
+  }
+  if(saveBtn) saveBtn.disabled = done < total;
 }
 
 /* ---------- SCORE ---------- */
@@ -450,7 +543,7 @@ function renderWeather(){
     return '<div class="weather-line"><span>'+l[0]+'</span><b>'+l[1]+'</b></div>';
   }).join("");
   var srcLabel = w.position_source === "gps" ? "device GPS" : "fixed reference (GPS unavailable)";
-  box.innerHTML = html + '<div class="small" style="margin-top:4px">Position: '+w.position_label+' ('+srcLabel+') — fetched at '+ new Date(w.fetchedAt).toLocaleTimeString() +'</div>';
+  box.innerHTML = html + '<div class="small" style="margin-top:4px">Position: '+w.position_label+' ('+srcLabel+') — last updated '+ new Date(w.fetchedAt).toLocaleDateString() +' '+ new Date(w.fetchedAt).toLocaleTimeString() +'</div>';
 }
 
 function applyWeatherSuggestions(){
@@ -480,10 +573,11 @@ function applyWeatherSuggestions(){
 
 /* ---------- SAVE / RESET ---------- */
 function saveEntry(){
-  if(!state.asset){ alert("Please select an asset."); return; }
+  if(!state.asset){ showToast("Please select an asset."); return; }
   var missing = CRITERIA.filter(function(c){ return !state.selections[c.id]; });
-  if(missing.length){ alert("Please complete every Decision Matrix criterion."); return; }
-  if(!state.lifesaving){ alert("Please record the Lifesaving Check result."); return; }
+  if(missing.length){ showToast("Please complete every Decision Matrix criterion."); return; }
+  var lsResult = computeLifesavingResult();
+  if(lsResult === null){ showToast("Please answer all 4 Lifesaving Check points."); return; }
 
   var now = new Date();
   var total = updateScore();
@@ -497,7 +591,8 @@ function saveEntry(){
     asset: state.asset,
     score_total: total,
     decision: decision,
-    lifesaving_check: state.lifesaving,
+    lifesaving_check: lsResult,
+    lifesaving_items: { l1: state.lifesaving.l1, l5: state.lifesaving.l5, l6: state.lifesaving.l6, l7: state.lifesaving.l7 },
     commentaire: document.getElementById("commentInput").value.trim(),
     criteres: {},
     meteo: state.weather || null
@@ -514,19 +609,31 @@ function saveEntry(){
   var logs = getLogs();
   logs.unshift(entry);
   setLogs(logs);
+  updateLogBadge();
 
-  alert("Saved — Score "+total+" — "+decision+" — Lifesaving: "+state.lifesaving);
+  showToast("Saved — Score "+total+" — "+decision+" — Lifesaving: "+lsResult+". New transfer ready.");
   resetForm();
+  window.scrollTo({top:0, behavior:"smooth"});
 }
 
 function resetForm(){
   state.selections = {};
   state.autoFlags = {};
-  state.lifesaving = null;
+  state.lifesaving = {};
   document.getElementById("commentInput").value = "";
   renderCriteria();
   renderLifesaving();
   updateScore();
+  updateProgress();
+}
+
+function showToast(msg){
+  var t = document.getElementById("toast");
+  if(!t) return;
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
 }
 
 /* ---------- LOG SCREEN ---------- */
@@ -535,11 +642,17 @@ function showLog(){
   document.getElementById("sticky").classList.add("hidden");
   document.getElementById("logScreen").classList.remove("hidden");
   renderLog();
+  window.scrollTo({top:0});
 }
 function showMain(){
   document.getElementById("logScreen").classList.add("hidden");
   document.getElementById("mainScreen").classList.remove("hidden");
   document.getElementById("sticky").classList.remove("hidden");
+  window.scrollTo({top:0});
+}
+function updateLogBadge(){
+  var b = document.getElementById("logCountBadge");
+  if(b) b.textContent = getLogs().length;
 }
 function renderLog(){
   var logs = getLogs();
@@ -561,11 +674,13 @@ function deleteEntry(i){
   logs.splice(i,1);
   setLogs(logs);
   renderLog();
+  updateLogBadge();
 }
 function clearLog(){
   if(confirm("Permanently clear the entire log?")){
     setLogs([]);
     renderLog();
+    updateLogBadge();
   }
 }
 function escapeHtml(s){
@@ -591,12 +706,15 @@ function exportCSV(){
   var logs = getLogs();
   if(logs.length===0){ alert("Log is empty."); return; }
   var critIds = CRITERIA.map(function(c){return c.id;});
-  var header = ["date","time","vessel","asset","score_total","decision","lifesaving_check","comment"]
+  var header = ["date","time","vessel","asset","score_total","decision","lifesaving_check",
+    "lifesaving_l1_risk_green_light","lifesaving_l5_comms_assistant","lifesaving_l6_loose_items_secured","lifesaving_l7_ppe","comment"]
     .concat(critIds)
     .concat(["weather_position_label","weather_lat","weather_lon","weather_position_source","weather_fetched_at","weather_swell_height_m","weather_swell_period_s","weather_wind_speed_kts","weather_wave_height_m","weather_visibility_m"]);
   var rows = [header.join(";")];
   logs.forEach(function(e){
+    var li = e.lifesaving_items || {};
     var row = [e.date, e.heure, e.navire, e.asset, e.score_total, e.decision, e.lifesaving_check,
+      li.l1||"", li.l5||"", li.l6||"", li.l7||"",
       '"'+(e.commentaire||"").replace(/"/g,'""')+'"'];
     critIds.forEach(function(id){
       var c = e.criteres[id] || {};
