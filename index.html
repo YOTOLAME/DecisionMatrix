@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Decision Matrix Crewboat</title>
+<style>
+  :root{
+    --green:#1e8e3e; --green-bg:#e6f4ea;
+    --yellow:#b28704; --yellow-bg:#fff4d6;
+    --red:#c5221f; --red-bg:#fce8e6;
+    --ink:#1a1a1a; --muted:#6b6b6b; --line:#dcdcdc;
+    --card:#ffffff; --bg:#f2f3f5; --accent:#0b57d0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    touch-action:manipulation; user-select:none;}
+  #app{max-width:520px;margin:0 auto;padding:12px 12px 130px 12px;}
+  h1{font-size:18px;margin:8px 4px 2px 4px;}
+  .sub{font-size:12px;color:var(--muted);margin:0 4px 14px 4px;}
+  .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  label{font-size:13px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
+  input[type=text]{width:100%;font-size:18px;padding:12px;border:1px solid var(--line);
+    border-radius:10px;background:#fafafa;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:13px 16px;border-radius:12px;border:none;font-size:15px;font-weight:600;
+    cursor:pointer;min-height:48px;}
+  .btn-primary{background:var(--accent);color:#fff;width:100%;}
+  .btn-ghost{background:#eef0f3;color:var(--ink);}
+  .btn-danger{background:var(--red-bg);color:var(--red);}
+  .btn-block{width:100%;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .asset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .asset-btn{padding:12px 4px;border-radius:10px;border:2px solid var(--line);
+    background:#fafafa;font-size:13px;font-weight:600;min-height:46px;}
+  .asset-btn.selected{border-color:var(--accent);background:#e8f0fe;color:var(--accent);}
+  .crit{margin-bottom:14px;}
+  .crit-title{font-size:14px;font-weight:700;margin-bottom:8px;}
+  .opt-btn{border-radius:10px;border:2px solid var(--line);padding:10px 6px;
+    font-size:12.5px;font-weight:600;min-height:52px;line-height:1.25;text-align:center;
+    background:#fafafa;position:relative;}
+  .opt-btn.green.selected{background:var(--green-bg);border-color:var(--green);color:var(--green);}
+  .opt-btn.yellow.selected{background:var(--yellow-bg);border-color:var(--yellow);color:#8a6600;}
+  .opt-btn.red.selected{background:var(--red-bg);border-color:var(--red);color:var(--red);}
+  .badge-auto{position:absolute;top:-8px;right:-6px;background:var(--accent);color:#fff;
+    font-size:9px;border-radius:8px;padding:2px 5px;}
+  .weather-box{font-size:13px;color:var(--muted);}
+  .weather-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);}
+  .weather-line:last-child{border-bottom:none;}
+  textarea{width:100%;font-size:15px;padding:10px;border:1px solid var(--line);
+    border-radius:10px;background:#fafafa;min-height:60px;resize:vertical;font-family:inherit;}
+  #sticky{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0));
+    background:#fff;border-top:1px solid var(--line);}
+  #stickyInner{max-width:520px;margin:0 auto;}
+  .score-banner{border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;
+    align-items:center;font-weight:800;margin-bottom:8px;}
+  .score-banner.go{background:var(--green-bg);color:var(--green);}
+  .score-banner.caution{background:var(--yellow-bg);color:#8a6600;}
+  .score-banner.stop{background:var(--red-bg);color:var(--red);}
+  .actions-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .link{color:var(--accent);font-size:13px;font-weight:600;background:none;border:none;padding:6px;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th,td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top;}
+  .hidden{display:none !important;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;}
+  .pill.go{background:var(--green-bg);color:var(--green);}
+  .pill.stop{background:var(--red-bg);color:var(--red);}
+  .log-actions{display:flex;gap:6px;margin-top:6px;}
+  .log-actions button{flex:1;padding:6px;font-size:11px;}
+  .small{font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SETUP SCREEN -->
+  <div id="setupScreen">
+    <h1>Decision Matrix — Crewboat</h1>
+    <p class="sub">TEPA — GEN-PRO-DT/LOG/NAV-002, Appendix 2</p>
+    <div class="card">
+      <label>Vessel name (Captain)</label>
+      <input type="text" id="vesselInput" placeholder="e.g. XXXXX">
+      <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="saveVessel()">Confirm</button>
+    </div>
+  </div>
+
+  <!-- MAIN SCREEN -->
+  <div id="mainScreen" class="hidden">
+    <div class="topbar">
+      <div>
+        <h1 style="margin-bottom:0">Decision Matrix</h1>
+        <div class="small">Vessel: <b id="vesselLabel"></b> <button class="link" onclick="editVessel()">edit</button></div>
+      </div>
+      <button class="link" onclick="showLog()">Log ▸</button>
+    </div>
+
+    <div class="card">
+      <label>Asset</label>
+      <div class="asset-grid" id="assetGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label style="margin-bottom:0">Weather (indicative)</label>
+        <button class="btn btn-ghost" style="min-height:34px;padding:6px 10px;font-size:12px" onclick="fetchWeather()">Refresh</button>
+      </div>
+      <div class="weather-box" id="weatherBox">Not fetched yet. Tap "Refresh" (internet required).</div>
+      <div class="small" style="margin-top:6px">Uses device GPS. If GPS is unavailable, falls back to fixed reference position <span id="posLabel"></span> (Block 17/32 area). Weather is indicative only — the Captain confirms or corrects every criterion below based on his own assessment.</div>
+    </div>
+
+    <div class="card" id="criteriaCard"></div>
+
+    <div class="card" id="lifesavingCard">
+      <label style="margin-bottom:2px">Marine Lifesaving Check — Passenger Transfer (Boat-Landing / FROG)</label>
+      <div class="small" style="margin-bottom:10px">Ref. TEPA Marine Safety Card. Points already covered by the Decision Matrix above (weather, briefing, PPE, boat-landing condition, communication) are not repeated here — record only the overall result.</div>
+      <div class="grid2" id="lifesavingGrid"></div>
+    </div>
+
+    <div class="card">
+      <label>Comment (optional)</label>
+      <textarea id="commentInput" placeholder="Observations, decision, action..."></textarea>
+    </div>
+
+    <div style="height:6px"></div>
+  </div>
+
+  <!-- LOG SCREEN -->
+  <div id="logScreen" class="hidden">
+    <div class="topbar">
+      <h1 style="margin-bottom:0">Log</h1>
+      <button class="link" onclick="showMain()">◂ Back</button>
+    </div>
+    <div class="card">
+      <div class="actions-row" style="margin-bottom:10px">
+        <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
+        <button class="btn btn-ghost" onclick="exportJSON()">Export JSON</button>
+      </div>
+      <button class="btn btn-danger btn-block" onclick="clearLog()">Clear entire log</button>
+    </div>
+    <div class="card" id="logList"></div>
+  </div>
+
+</div>
+
+<!-- STICKY BOTTOM -->
+<div id="sticky" class="hidden">
+  <div id="stickyInner">
+    <div class="score-banner" id="scoreBanner">
+      <span id="scoreText">Score: 0</span>
+      <span id="decisionText">GO</span>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-ghost" onclick="resetForm()">New</button>
+      <button class="btn btn-primary" onclick="saveEntry()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- CONFIG ---------- */
+var ASSETS = ["PAZ","CLOV","GIRASSOL","KAS","KAN","DALIA","MPSV","DrillShip","PSV","AHTS","TUG","Crewboat"];
+var STOP_THRESHOLD = 12;
+
+/* Fixed reference position kept as base, as provided by the Captain (Windy screenshot,
+   Block 17/32 area). No per-asset coordinates are used until verified internal TEPA
+   coordinates are supplied — do not invent them. Edit BASE_POSITION below if a more
+   precise / per-asset reference is confirmed later. */
+var BASE_POSITION = { lat: -7.65, lon: 11.68, label: "-7.65, 11.68" };
+
+var CRITERIA = [
+  { id:"swell_height", label:"Significant swell height (m)", weatherKey:"swell_height",
+    options:[
+      {label:"0 – 1.5 m", score:0, color:"green"},
+      {label:"1.5 – 2.5 m", score:3, color:"yellow"},
+      {label:"> 2.5 m", score:4, color:"red"}
+    ]},
+  { id:"swell_period", label:"Swell period (s)", weatherKey:"swell_period",
+    options:[
+      {label:"> 15 s", score:0, color:"green"},
+      {label:"10 – 15 s", score:3, color:"yellow"},
+      {label:"< 10 s", score:4, color:"red"}
+    ]},
+  { id:"wind_speed", label:"Wind speed (kts)", weatherKey:"wind_speed",
+    options:[
+      {label:"< 20 kts", score:0, color:"green"},
+      {label:"20 – 28 kts", score:3, color:"yellow"},
+      {label:"28 – 35 kts", score:4, color:"red"}
+    ]},
+  { id:"current_speed", label:"Current speed (kts)",
+    options:[
+      {label:"0 – 1 kt", score:0, color:"green"},
+      {label:"1 – 2 kts", score:0, color:"yellow"},
+      {label:"> 2 kts", score:4, color:"red"}
+    ]},
+  { id:"visibility", label:"Visibility",
+    options:[
+      {label:"Good", score:0, color:"green"},
+      {label:"Moderate", score:0, color:"yellow"},
+      {label:"Poor", score:3, color:"red"}
+    ]},
+  { id:"safety_briefing", label:"Passenger safety briefing",
+    options:[
+      {label:"Completed", score:0, color:"green"},
+      {label:"Not completed", score:3, color:"red"}
+    ]},
+  { id:"passenger_info", label:"Passenger information (BLA)",
+    options:[
+      {label:"Information given", score:0, color:"green"},
+      {label:"Information not given", score:4, color:"red"}
+    ]},
+  { id:"boat_landing", label:"Boat-Landing condition",
+    options:[
+      {label:"Good", score:0, color:"green"},
+      {label:"Average", score:3, color:"yellow"},
+      {label:"Hazardous", score:4, color:"red"}
+    ]},
+  { id:"crewboat_condition", label:"Crewboat condition",
+    options:[
+      {label:"Good", score:0, color:"green"},
+      {label:"Engine / steering defect", score:4, color:"red"}
+    ]}
+];
+
+var LIFESAVING_OPTIONS = [
+  {label:"Confirmed — all points OK", value:"OK", color:"green"},
+  {label:"Not confirmed — reassess", value:"REASSESS", color:"red"}
+];
+
+/* ---------- STATE ---------- */
+var state = { asset:null, selections:{}, weather:null, autoFlags:{}, lifesaving:null };
+
+/* ---------- STORAGE HELPERS (fail-safe: some iOS contexts — Mail/AirDrop/Files
+   previews, private mode — block localStorage and throw on access. If that
+   happens we fall back to an in-memory store so the app still works for the
+   current session instead of silently freezing.) ---------- */
+var memStore = {};
+var storageOK = true;
+try { localStorage.setItem("dm_test","1"); localStorage.removeItem("dm_test"); }
+catch(e){ storageOK = false; }
+
+function lsGet(key){
+  if(storageOK){ try{ return localStorage.getItem(key); }catch(e){ storageOK = false; } }
+  return (key in memStore) ? memStore[key] : null;
+}
+function lsSet(key, val){
+  if(storageOK){ try{ localStorage.setItem(key, val); return; }catch(e){ storageOK = false; } }
+  memStore[key] = val;
+}
+function getVessel(){ return lsGet("dm_vessel") || ""; }
+function setVessel(v){ lsSet("dm_vessel", v); }
+function getLogs(){ try{ return JSON.parse(lsGet("dm_logs")||"[]"); }catch(e){ return []; } }
+function setLogs(l){ lsSet("dm_logs", JSON.stringify(l)); }
+
+/* ---------- SETUP ---------- */
+function init(){
+  document.getElementById("posLabel").textContent = BASE_POSITION.label;
+  var v = getVessel();
+  if(v){ startMain(); } else { document.getElementById("setupScreen").classList.remove("hidden"); }
+}
+function saveVessel(){
+  var v = document.getElementById("vesselInput").value.trim();
+  if(!v){ alert("Please enter the vessel name."); return; }
+  try{ setVessel(v); }catch(e){ /* ignore, memory fallback already handled in lsSet */ }
+  startMain();
+}
+function editVessel(){
+  var v = prompt("Vessel name:", getVessel());
+  if(v && v.trim()){ setVessel(v.trim()); document.getElementById("vesselLabel").textContent = v.trim(); }
+}
+function startMain(){
+  document.getElementById("setupScreen").classList.add("hidden");
+  document.getElementById("mainScreen").classList.remove("hidden");
+  document.getElementById("sticky").classList.remove("hidden");
+  document.getElementById("vesselLabel").textContent = getVessel();
+  if(!storageOK){
+    var warn = document.getElementById("weatherBox");
+    if(warn) warn.parentNode.insertAdjacentHTML("beforeend",
+      '<div class="small" style="color:var(--red);margin-top:6px">Local storage is blocked in this browser context — entries will not be saved after closing the page. Open this file directly in Safari (not a Mail/AirDrop preview) to enable saving.</div>');
+  }
+  renderAssets();
+  renderCriteria();
+  renderLifesaving();
+  updateScore();
+  if(navigator.onLine){ try{ fetchWeather(); }catch(e){ /* non-blocking */ } }
+}
+
+/* ---------- ASSET ---------- */
+function renderAssets(){
+  var grid = document.getElementById("assetGrid");
+  grid.innerHTML = "";
+  ASSETS.forEach(function(a){
+    var b = document.createElement("button");
+    b.className = "asset-btn" + (state.asset===a ? " selected":"");
+    b.textContent = a;
+    b.onclick = function(){ state.asset = a; renderAssets(); };
+    grid.appendChild(b);
+  });
+}
+
+/* ---------- CRITERIA ---------- */
+function renderCriteria(){
+  var box = document.getElementById("criteriaCard");
+  box.innerHTML = "";
+  CRITERIA.forEach(function(crit){
+    var wrap = document.createElement("div");
+    wrap.className = "crit";
+    var title = document.createElement("div");
+    title.className = "crit-title";
+    title.textContent = crit.label;
+    wrap.appendChild(title);
+
+    var gridClass = crit.options.length === 2 ? "grid2" : "grid3";
+    var grid = document.createElement("div");
+    grid.className = gridClass;
+
+    crit.options.forEach(function(opt, idx){
+      var b = document.createElement("button");
+      var sel = state.selections[crit.id];
+      var isSelected = sel && sel.idx === idx;
+      b.className = "opt-btn " + opt.color + (isSelected ? " selected":"");
+      b.innerHTML = opt.label + (isSelected && state.autoFlags[crit.id] ? '<span class="badge-auto">auto</span>' : "");
+      b.onclick = function(){
+        state.selections[crit.id] = { idx:idx, label:opt.label, score:opt.score };
+        state.autoFlags[crit.id] = false;
+        renderCriteria();
+        updateScore();
+      };
+      grid.appendChild(b);
+    });
+    wrap.appendChild(grid);
+    box.appendChild(wrap);
+  });
+}
+
+/* ---------- LIFESAVING CHECK ---------- */
+function renderLifesaving(){
+  var grid = document.getElementById("lifesavingGrid");
+  grid.innerHTML = "";
+  LIFESAVING_OPTIONS.forEach(function(opt){
+    var b = document.createElement("button");
+    var isSelected = state.lifesaving === opt.value;
+    b.className = "opt-btn " + opt.color + (isSelected ? " selected":"");
+    b.textContent = opt.label;
+    b.onclick = function(){
+      state.lifesaving = opt.value;
+      renderLifesaving();
+    };
+    grid.appendChild(b);
+  });
+}
+
+/* ---------- SCORE ---------- */
+function updateScore(){
+  var total = 0;
+  CRITERIA.forEach(function(c){
+    var s = state.selections[c.id];
+    if(s) total += s.score;
+  });
+  var banner = document.getElementById("scoreBanner");
+  var scoreText = document.getElementById("scoreText");
+  var decisionText = document.getElementById("decisionText");
+  scoreText.textContent = "Total score: " + total;
+  banner.classList.remove("go","caution","stop");
+  if(total >= STOP_THRESHOLD){
+    banner.classList.add("stop");
+    decisionText.textContent = "STOP — Score ≥ 12";
+  } else if(total >= 7){
+    banner.classList.add("caution");
+    decisionText.textContent = "GO — Caution";
+  } else {
+    banner.classList.add("go");
+    decisionText.textContent = "GO";
+  }
+  return total;
+}
+
+/* ---------- WEATHER (device GPS, fixed position as fallback) ---------- */
+function fetchWeather(){
+  var box = document.getElementById("weatherBox");
+  box.textContent = "Fetching...";
+  if(!navigator.geolocation){
+    box.textContent = "Geolocation not available on this device.";
+    loadWeatherFor(BASE_POSITION.lat, BASE_POSITION.lon, BASE_POSITION.label, "fixed-fallback");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition ?
+    (function(){
+      try{
+        navigator.geolocation.getCurrentPosition(function(pos){
+          var lat = pos.coords.latitude, lon = pos.coords.longitude;
+          var label = lat.toFixed(4)+", "+lon.toFixed(4);
+          loadWeatherFor(lat, lon, label, "gps");
+        }, function(err){
+          box.textContent = "GPS denied / unavailable — using fixed reference position. Manual entry recommended.";
+          loadWeatherFor(BASE_POSITION.lat, BASE_POSITION.lon, BASE_POSITION.label, "fixed-fallback");
+        }, { timeout:12000 });
+      } catch(e){
+        box.textContent = "GPS error — using fixed reference position.";
+        loadWeatherFor(BASE_POSITION.lat, BASE_POSITION.lon, BASE_POSITION.label, "fixed-fallback");
+      }
+    })()
+    : loadWeatherFor(BASE_POSITION.lat, BASE_POSITION.lon, BASE_POSITION.label, "fixed-fallback");
+}
+
+function loadWeatherFor(lat, lon, label, source){
+  var marineUrl = "https://marine-api.open-meteo.com/v1/marine?latitude="+lat+"&longitude="+lon+
+    "&current=wave_height,swell_wave_height,swell_wave_period&timezone=auto";
+  var weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+
+    "&current=wind_speed_10m,visibility&wind_speed_unit=kn&timezone=auto";
+
+  Promise.all([
+    fetch(marineUrl).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(weatherUrl).then(function(r){return r.json();}).catch(function(){return null;})
+  ]).then(function(res){
+    var marine = res[0], wx = res[1];
+    var w = { lat:lat, lon:lon, position_label:label, position_source:source, fetchedAt:new Date().toISOString() };
+    if(marine && marine.current){
+      w.swell_height = marine.current.swell_wave_height;
+      w.swell_period = marine.current.swell_wave_period;
+      w.wave_height = marine.current.wave_height;
+    }
+    if(wx && wx.current){
+      w.wind_speed = wx.current.wind_speed_10m;
+      w.visibility_m = wx.current.visibility;
+    }
+    state.weather = w;
+    renderWeather();
+    applyWeatherSuggestions();
+  }).catch(function(){
+    document.getElementById("weatherBox").textContent = "Weather fetch failed (no connection). Manual entry required.";
+  });
+}
+
+function renderWeather(){
+  var w = state.weather;
+  var box = document.getElementById("weatherBox");
+  if(!w){ box.textContent = "Not fetched."; return; }
+  var lines = [];
+  if(w.swell_height!=null) lines.push(["Swell height (m)", w.swell_height.toFixed ? w.swell_height.toFixed(1) : w.swell_height]);
+  if(w.swell_period!=null) lines.push(["Swell period (s)", w.swell_period.toFixed ? w.swell_period.toFixed(0) : w.swell_period]);
+  if(w.wind_speed!=null) lines.push(["Wind (kts)", w.wind_speed.toFixed ? w.wind_speed.toFixed(0) : w.wind_speed]);
+  if(w.visibility_m!=null) lines.push(["Visibility (m)", w.visibility_m]);
+  if(lines.length===0){ box.textContent = "No data available for this position."; return; }
+  var html = lines.map(function(l){
+    return '<div class="weather-line"><span>'+l[0]+'</span><b>'+l[1]+'</b></div>';
+  }).join("");
+  var srcLabel = w.position_source === "gps" ? "device GPS" : "fixed reference (GPS unavailable)";
+  box.innerHTML = html + '<div class="small" style="margin-top:4px">Position: '+w.position_label+' ('+srcLabel+') — fetched at '+ new Date(w.fetchedAt).toLocaleTimeString() +'</div>';
+}
+
+function applyWeatherSuggestions(){
+  var w = state.weather;
+  if(!w) return;
+  CRITERIA.forEach(function(crit){
+    if(!crit.weatherKey) return;
+    var val = w[crit.weatherKey];
+    if(val==null) return;
+    var idx = null;
+    if(crit.id==="swell_height"){
+      idx = val<=1.5?0:(val<=2.5?1:2);
+    } else if(crit.id==="wind_speed"){
+      idx = val<20?0:(val<=28?1:2);
+    } else if(crit.id==="swell_period"){
+      idx = val>15?0:(val>=10?1:2);
+    }
+    if(idx!=null && !state.selections[crit.id]){
+      var opt = crit.options[idx];
+      state.selections[crit.id] = { idx:idx, label:opt.label, score:opt.score };
+      state.autoFlags[crit.id] = true;
+    }
+  });
+  renderCriteria();
+  updateScore();
+}
+
+/* ---------- SAVE / RESET ---------- */
+function saveEntry(){
+  if(!state.asset){ alert("Please select an asset."); return; }
+  var missing = CRITERIA.filter(function(c){ return !state.selections[c.id]; });
+  if(missing.length){ alert("Please complete every Decision Matrix criterion."); return; }
+  if(!state.lifesaving){ alert("Please record the Lifesaving Check result."); return; }
+
+  var now = new Date();
+  var total = updateScore();
+  var decision = total >= STOP_THRESHOLD ? "STOP" : "GO";
+
+  var entry = {
+    date: now.toLocaleDateString("en-GB"),
+    heure: now.toLocaleTimeString("en-GB"),
+    timestamp_iso: now.toISOString(),
+    navire: getVessel(),
+    asset: state.asset,
+    score_total: total,
+    decision: decision,
+    lifesaving_check: state.lifesaving,
+    commentaire: document.getElementById("commentInput").value.trim(),
+    criteres: {},
+    meteo: state.weather || null
+  };
+  CRITERIA.forEach(function(c){
+    var sel = state.selections[c.id];
+    entry.criteres[c.id] = {
+      label: sel.label,
+      score: sel.score,
+      source: state.autoFlags[c.id] ? "auto" : "manual"
+    };
+  });
+
+  var logs = getLogs();
+  logs.unshift(entry);
+  setLogs(logs);
+
+  alert("Saved — Score "+total+" — "+decision+" — Lifesaving: "+state.lifesaving);
+  resetForm();
+}
+
+function resetForm(){
+  state.selections = {};
+  state.autoFlags = {};
+  state.lifesaving = null;
+  document.getElementById("commentInput").value = "";
+  renderCriteria();
+  renderLifesaving();
+  updateScore();
+}
+
+/* ---------- LOG SCREEN ---------- */
+function showLog(){
+  document.getElementById("mainScreen").classList.add("hidden");
+  document.getElementById("sticky").classList.add("hidden");
+  document.getElementById("logScreen").classList.remove("hidden");
+  renderLog();
+}
+function showMain(){
+  document.getElementById("logScreen").classList.add("hidden");
+  document.getElementById("mainScreen").classList.remove("hidden");
+  document.getElementById("sticky").classList.remove("hidden");
+}
+function renderLog(){
+  var logs = getLogs();
+  var box = document.getElementById("logList");
+  if(logs.length===0){ box.innerHTML = '<p class="small">No entries.</p>'; return; }
+  var html = "";
+  logs.forEach(function(e, i){
+    html += '<div style="border-bottom:1px solid var(--line);padding:8px 0">'
+      + '<div class="row"><b>'+e.date+' '+e.heure+'</b><span class="pill '+(e.decision==="STOP"?"stop":"go")+'">'+e.decision+' ('+e.score_total+')</span></div>'
+      + '<div class="small">'+e.navire+' — '+e.asset+' — Lifesaving: '+e.lifesaving_check+'</div>'
+      + (e.commentaire ? '<div class="small">💬 '+escapeHtml(e.commentaire)+'</div>' : '')
+      + '<div class="log-actions"><button class="btn btn-danger" onclick="deleteEntry('+i+')">Delete</button></div>'
+      + '</div>';
+  });
+  box.innerHTML = html;
+}
+function deleteEntry(i){
+  var logs = getLogs();
+  logs.splice(i,1);
+  setLogs(logs);
+  renderLog();
+}
+function clearLog(){
+  if(confirm("Permanently clear the entire log?")){
+    setLogs([]);
+    renderLog();
+  }
+}
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* ---------- EXPORT ---------- */
+function download(filename, text){
+  var blob = new Blob([text], {type:"text/plain;charset=utf-8"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exportJSON(){
+  var logs = getLogs();
+  download("decision_matrix_log_"+Date.now()+".json", JSON.stringify(logs, null, 2));
+}
+function exportCSV(){
+  var logs = getLogs();
+  if(logs.length===0){ alert("Log is empty."); return; }
+  var critIds = CRITERIA.map(function(c){return c.id;});
+  var header = ["date","time","vessel","asset","score_total","decision","lifesaving_check","comment"]
+    .concat(critIds)
+    .concat(["weather_position_label","weather_lat","weather_lon","weather_position_source","weather_fetched_at","weather_swell_height_m","weather_swell_period_s","weather_wind_speed_kts","weather_wave_height_m","weather_visibility_m"]);
+  var rows = [header.join(";")];
+  logs.forEach(function(e){
+    var row = [e.date, e.heure, e.navire, e.asset, e.score_total, e.decision, e.lifesaving_check,
+      '"'+(e.commentaire||"").replace(/"/g,'""')+'"'];
+    critIds.forEach(function(id){
+      var c = e.criteres[id] || {};
+      row.push('"'+(c.label||"")+' ['+(c.source||"")+']"');
+    });
+    var w = e.meteo || {};
+    row.push(w.position_label!=null?w.position_label:"");
+    row.push(w.lat!=null?w.lat:"");
+    row.push(w.lon!=null?w.lon:"");
+    row.push(w.position_source!=null?w.position_source:"");
+    row.push(w.fetchedAt!=null?w.fetchedAt:"");
+    row.push(w.swell_height!=null?w.swell_height:"");
+    row.push(w.swell_period!=null?w.swell_period:"");
+    row.push(w.wind_speed!=null?w.wind_speed:"");
+    row.push(w.wave_height!=null?w.wave_height:"");
+    row.push(w.visibility_m!=null?w.visibility_m:"");
+    rows.push(row.join(";"));
+  });
+  download("decision_matrix_log_"+Date.now()+".csv", rows.join("\n"));
+}
+
+init();
+</script>
+</body>
+</html>
